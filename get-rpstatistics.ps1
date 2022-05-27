@@ -1,18 +1,22 @@
 # get-rpstatistics.ps1
 #
+# Parameters:
+#   -vbrServer [server] = Veeam backup server name or IP to connect to
+#   -suppressGridDisplay = do not show GridViews after processing
+# 
 # This script enumerates all existing restore points and
 # creates 2 output files with following content 
-#   - Veeam-RPs.csv:
+#   - [VBR-Servername]-RestorePoints.csv:
 #       a list of all restore points incl. type of backup,
 #       backup file size, creation time, compression and dedupe ratios,
 #       change rates (for incremental restore points only) and
 #       a few blocksize calculations (for object storage sizing assistance)
-#   - Veeam-RPs-stats.csv:
+#   - [VBR-Servername]-RestorePoints-statistics.csv:
 #       average change and reduction rates per vm and job
 #       (separated for full and incremental restore points)
 #
 # the contents of these files will also be displayed interactively via GridView
-# (can easily be disabled by commenting lines out at the end of this script file)
+# (if not suppressed by using switch parameter -suppressGridDisplay)
 #
 # 2020.10.23 by Matthias Mehrtens
 # 2021.01.25 fixed from loading "Add-PSSnapin -Name VeeamPSSnapIn" to "Import-Module Veeam.Backup.PowerShell" by Michael L.
