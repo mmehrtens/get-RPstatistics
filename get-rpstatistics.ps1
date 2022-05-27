@@ -1,4 +1,4 @@
-# get-rp-statistics.ps1
+# get-rpstatistics.ps1
 #
 # This script enumerates all existing restore points and
 # creates 2 output files with following content 
@@ -22,6 +22,7 @@
 # 2022.03.03 vbr server name now accepted as parameter, parameter "suppressGridDisplay" added
 # 2022.03.03 added credential file read/write and enabled passing an array of vbr servers via pipeline, e.g.
 #            'vbr-1', 'vbr-2' | .\get-rp-statistics -suppressGridDisplay
+# 2022.05.27 uploaded to Github
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
