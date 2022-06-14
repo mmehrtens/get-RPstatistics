@@ -168,7 +168,7 @@ Process {
     # get all backup jobs
     Write-Verbose "Getting all backup jobs."
     $allBackups = Get-VBRBackup | Where-Object {$_.JobType -inotin $jobTypesUnsuppd}
-    $allRPs = [System.Collections.ArrayList]@()
+    $allRPs =  New-Object -TypeName 'System.Collections.Generic.List[object]'
     $countJobs = 0
     $rpId = 0
 
@@ -281,7 +281,7 @@ Process {
     foreach($rp in $allRPs) {$rp.RpId = ++$rpID }
 
     # create master list of unique vm-job combinations
-    $masterList = [System.Collections.ArrayList]@()
+    $masterList =  New-Object -TypeName 'System.Collections.Generic.List[object]'
     foreach($rp in $allRPs) {
         # create object of vm/job combination, if it hasn't been added to master list yet
         if($null -eq ($masterList | Where-Object { ($_.VM -eq $rp.VMName) -and ($_.Job -eq $rp.BackupJob) -and ($_.Repository -eq $rp.Repository)}) ) {
@@ -298,7 +298,7 @@ Process {
                 Repository = $rp.Repository
                 RepoType = $myRepoType
                 Blocksize = $rp.Blocksize
-                RPList = [System.Collections.ArrayList]@()
+                RPList = New-Object -TypeName 'System.Collections.Generic.List[object]'
                 # the following properties will be populated later
                 FullCount = $null
                 AvgFullDedup = $null
@@ -413,7 +413,7 @@ Process {
     }
 
     # create statistics output
-    $outStats = [System.Collections.ArrayList]@()
+    $outStats = New-Object -TypeName 'System.Collections.Generic.List[object]'
     foreach($combi in $masterlist) {
         $outObject = [PSCustomObject]@{
             # properties to be included in output
