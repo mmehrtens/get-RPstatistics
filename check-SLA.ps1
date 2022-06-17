@@ -361,6 +361,7 @@ Process {
             $SLAObject | Out-GridView -Title "SLA compliance overview" -Verbose 
         }
     }
+    Write-Progress -Activity "Calculating and preparing output..." -Id 2 -Completed
     Write-Progress -Activity $vbrServer -Id 1 -Completed
     Write-Output ""
     Write-Output "Results from VBR Server ""$vbrServer"""
