@@ -1,4 +1,4 @@
- # check-SLA.ps1
+# check-SLA.ps1
 #
 # This script will read all the most recent restore points from all backup jobs of a single or multiple VBR servers.
 # SLA fulfillment ratio (in percent) is calculated based on which percentage of the restore points have been created

@@ -1,4 +1,4 @@
- # get-rpstatistics.ps1
+# get-rpstatistics.ps1
 #
 # Parameters:
 #   -vbrServer [server] = Veeam backup server name or IP to connect to
