@@ -11,7 +11,7 @@
 #       backup file size, creation time, compression and dedupe ratios,
 #       change rates (for incremental restore points only) and
 #       a few blocksize calculations (for object storage sizing assistance)
-#   - [VBR-Servername]-RestorePoints-statistics.csv:
+#   - [VBR-Servername]-statistics.csv:
 #       average change and reduction rates per vm and job
 #       (separated for full and incremental restore points)
 #
