@@ -1,4 +1,4 @@
-# get-rpstatistics.ps1
+ # get-rpstatistics.ps1
 #
 # Parameters:
 #   -vbrServer [server] = Veeam backup server name or IP to connect to
@@ -27,6 +27,7 @@
 # 2022.03.03 added credential file read/write and enabled passing an array of vbr servers via pipeline, e.g.
 #            'vbr-1', 'vbr-2' | .\get-rp-statistics -suppressGridDisplay
 # 2022.05.27 uploaded to Github
+# 2022.06.17 added CompletionTime and corrupt/consistent info
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
@@ -220,7 +221,12 @@ Process {
             if($objThisRepo.TypeDisplay -eq "Scale-out") {
                 $extentName = $restorePoint.FindChainRepositories().Name
             }
-
+            
+            # check valid completion time 
+            $completionTime = $restorePoint.CompletionTimeUTC
+            if($null -ne $completionTime){
+                $completionTime = $completionTime.ToLocalTime()
+            }
             $countRPs++
             $tmpObject = [PSCustomobject]@{
                 RpId = ++$rpID # will be set later!
@@ -229,7 +235,10 @@ Process {
                 Repository = $objThisRepo.Name
                 Extent = $extentName
                 RepoType = $restorePoint.FindChainRepositories().Type
-                CreationTime = $restorePoint.CreationTime
+                CreationTime = $restorePoint.CreationTimeUTC.ToLocalTime()
+                CompletionTime = $completionTime
+                IsCorrupted = $restorePoint.IsCorrupted
+                IsConsistent = $restorePoint.IsConsistent
                 BackupType = $restorePoint.algorithm
                 ProcessedData = $restorePoint.ApproxSize
                 DataSize = $restorePoint.GetStorage().stats.DataSize
@@ -484,4 +493,4 @@ Process {
     }
     Write-Progress -Activity $vbrServer -Id 1 -Completed
     Write-Verbose "Finished processing backup server $vbrServer."
-}
+} 

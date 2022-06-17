@@ -1,4 +1,4 @@
-# check-SLA.ps1
+ # check-SLA.ps1
 #
 # This script will read all the most recent restore points from all backup jobs of a single or multiple VBR servers.
 # SLA fulfillment ratio (in percent) is calculated based on which percentage of the restore points have been created
@@ -235,73 +235,80 @@ Process {
             Write-Progress -Activity "Getting restore points" -PercentComplete ($countRPs / $objRPs.Count * 100) -Id 3 -ParentId 2
             $myBackupJob = $null
 
-            # ignore restore points which are newer than the backup window end time
-            if($restorePoint.CreationTime -le $intervalEnd) {
+            # check valid completion time, otherwise ignore this (corrupt) restore point 
+            $completionTime = $restorePoint.CompletionTimeUTC
+            if($null -ne $completionTime){
+                $completionTime = $completionTime.ToLocalTime()
+            
+                # ignore restore points which are newer than the backup window end time
+                if($completionTime -le $intervalEnd) {
 
-                # only proceed if we do NOT already have a restore point for this VM from this job
-                if("$($restorePoint.VmName)-$($objBackup.Name)" -notin $VMJobList){
+                    # only proceed if we do NOT already have a restore point for this VM from this job
+                    if("$($restorePoint.VmName)-$($objBackup.Name)" -notin $VMJobList){
 
-                    try {
-                        $myBackupJob = $objBackup.GetJob()
-                    } catch {
-                        # ignore error
+                        try {
+                            $myBackupJob = $objBackup.GetJob()
+                        } catch {
+                            # ignore error
+                        }
+                        if($null -eq $myBackupJob ) {
+                            $myBlockSize = "[n/a]"
+                        } else {
+                            $myBlocksize = $jobBlockSizes."$($restorePoint.GetStorage().Blocksize)"
+                        }
+
+                        $myBackupType = $restorePoint.algorithm
+                        if($myBackupType -eq "Increment") {
+                            $myDataRead = $restorePoint.GetStorage().stats.DataSize
+                        } else {
+                            $myDataRead = $restorePoint.ApproxSize
+                        }
+                        $myDedup = $restorePoint.GetStorage().stats.DedupRatio
+                        $myCompr = $restorePoint.GetStorage().stats.CompressRatio
+                        if($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
+                        if($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
+
+                        $extentName = $null
+                        if($objThisRepo.TypeDisplay -eq "Scale-out") {
+                            $extentName = $restorePoint.FindChainRepositories().Name
+                        }
+
+                        # check if rp is within backup window
+                        $rpInBackupWindow = $false
+                        if(($completionTime -ge $intervalStart) -and ($completionTime -le $intervalEnd)) {
+                            $rpInBackupWindow = $true
+                            $totalRPsInBackupWindow++
+                        }
+
+                        $countRPs++
+                        $tmpObject = [PSCustomobject]@{
+                            RpId = ++$rpID # will be set later!
+                            VMName = $restorePoint.VmName
+                            BackupJob = $objBackup.Name
+                            Repository = $objThisRepo.Name
+                            Extent = $extentName
+                            RepoType = $restorePoint.FindChainRepositories().Type
+                            CreationTime = $restorePoint.CreationTimeUTC.ToLocalTime()
+                            CompletionTime = $completionTime
+                            InBackupWindow = $rpInBackupWindow
+                            BackupType = $restorePoint.algorithm
+                            ProcessedData = $restorePoint.ApproxSize
+                            DataSize = $restorePoint.GetStorage().stats.DataSize
+                            DataRead = $myDataRead
+                            BackupSize = $restorePoint.GetStorage().stats.BackupSize
+                            DedupRatio = $myDedup
+                            ComprRatio = $myCompr
+                            Reduction = $myDedup * $myCompr
+                            Blocksize = $myBlocksize
+                            Folder = get_backupfile_path $restorePoint
+                            Filename =  $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
+                        }
+
+                        $totalRPs++
+                        $allRPs.Add($tmpObject) | Out-Null
+                        $VMJobList.Add("$($restorePoint.VmName)-$($objBackup.Name)")
+                        $tmpObject = $null
                     }
-                    if($null -eq $myBackupJob ) {
-                        $myBlockSize = "[n/a]"
-                    } else {
-                        $myBlocksize = $jobBlockSizes."$($restorePoint.GetStorage().Blocksize)"
-                    }
-
-                    $myBackupType = $restorePoint.algorithm
-                    if($myBackupType -eq "Increment") {
-                        $myDataRead = $restorePoint.GetStorage().stats.DataSize
-                    } else {
-                        $myDataRead = $restorePoint.ApproxSize
-                    }
-                    $myDedup = $restorePoint.GetStorage().stats.DedupRatio
-                    $myCompr = $restorePoint.GetStorage().stats.CompressRatio
-                    if($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
-                    if($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
-
-                    $extentName = $null
-                    if($objThisRepo.TypeDisplay -eq "Scale-out") {
-                        $extentName = $restorePoint.FindChainRepositories().Name
-                    }
-
-                    # check if rp is within backup window
-                    $rpInBackupWindow = $false
-                    if(($restorePoint.CreationTime -ge $intervalStart) -and ($restorePoint.CreationTime -le $intervalEnd)) {
-                        $rpInBackupWindow = $true
-                        $totalRPsInBackupWindow++
-                    }
-
-                    $countRPs++
-                    $tmpObject = [PSCustomobject]@{
-                        RpId = ++$rpID # will be set later!
-                        VMName = $restorePoint.VmName
-                        BackupJob = $objBackup.Name
-                        Repository = $objThisRepo.Name
-                        Extent = $extentName
-                        RepoType = $restorePoint.FindChainRepositories().Type
-                        CreationTime = $restorePoint.CreationTime
-                        InBackupWindow = $rpInBackupWindow
-                        BackupType = $restorePoint.algorithm
-                        ProcessedData = $restorePoint.ApproxSize
-                        DataSize = $restorePoint.GetStorage().stats.DataSize
-                        DataRead = $myDataRead
-                        BackupSize = $restorePoint.GetStorage().stats.BackupSize
-                        DedupRatio = $myDedup
-                        ComprRatio = $myCompr
-                        Reduction = $myDedup * $myCompr
-                        Blocksize = $myBlocksize
-                        Folder = get_backupfile_path $restorePoint
-                        Filename =  $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
-                    }
-
-                    $totalRPs++
-                    $allRPs.Add($tmpObject) | Out-Null
-                    $VMJobList.Add("$($restorePoint.VmName)-$($objBackup.Name)")
-                    $tmpObject = $null
                 }
             }
         }
@@ -370,4 +377,4 @@ Process {
     Write-Output "                 SLA compliance: $SLACompliance%"
 
     Write-Verbose "Finished processing backup server $vbrServer."
-} 
+}
