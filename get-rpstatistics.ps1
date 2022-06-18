@@ -224,8 +224,14 @@ Process {
             
             # check valid completion time 
             $completionTime = $restorePoint.CompletionTimeUTC
+            $durationSpan = $null
             if($null -ne $completionTime){
-                $completionTime = $completionTime.ToLocalTime()
+                if($completionTime -gt $restorePoint.CreationTimeUTC) {
+                    $completionTime = $completionTime.ToLocalTime()
+                    $durationSpan = New-TimeSpan -Start $restorePoint.CreationTimeUTC -End $restorePoint.CompletionTimeUTC
+                } else {
+                    $completionTime = $null
+                }
             }
             $countRPs++
             $tmpObject = [PSCustomobject]@{
@@ -237,6 +243,7 @@ Process {
                 RepoType = $restorePoint.FindChainRepositories().Type
                 CreationTime = $restorePoint.CreationTimeUTC.ToLocalTime()
                 CompletionTime = $completionTime
+                Duration = $durationSpan
                 IsCorrupted = $restorePoint.IsCorrupted
                 IsConsistent = $restorePoint.IsConsistent
                 BackupType = $restorePoint.algorithm
@@ -310,10 +317,14 @@ Process {
                 RPList = New-Object -TypeName 'System.Collections.Generic.List[object]'
                 # the following properties will be populated later
                 FullCount = $null
+                IncrCount = $null
+                SyntCount = $null
+                AvgFullDuration = $null
+                AvgSyntDuration = $null
+                AvgIncrDuration = $null
                 AvgFullDedup = $null
                 AvgFullCompr = $null
                 AvgFullReduction = $null
-                IncrCount = $null
                 AvgIncrDedup = $null
                 AvgIncrCompr = $null
                 AvgIncrReduction = $null
@@ -363,14 +374,15 @@ Process {
         }
     }
 
-    # calculate averages for change rates, deduplication and compression ratios
+    # calculate averages for change rates, durations, deduplication and compression ratios
     foreach($combi in $masterList) {
         # reset all running variables
-        $fullCount = $incrCount = 0
+        $fullCount = $syntCount = $incrCount = 0
         $fullDedupSum = $fullComprSum = 0
         $incrDedupSum = $incrComprSum = 0
         $incrCRSum = $incrCR24hSum = 0
         $RPswithBlocksize = $BlocksWrittenTotal = 0
+        $fullDurationSum = $syntDurationSum = $incrDurationSum = $null
 
         # iterate restore points
         foreach($rp in $combi.RPList) {
@@ -382,15 +394,28 @@ Process {
                 $fullCount++
                 $fullDedupSum += $rp.DedupRatio
                 $fullComprSum += $rp.ComprRatio
+                if($rp.BackupType -eq "Full") {
+                    if($null -ne $rp.Duration) {
+                        $fullDurationSum += $rp.Duration.TotalSeconds
+                    }
+                } else {
+                    $syntCount++
+                    if($null -ne $rp.Duration) {
+                        $syntDurationSum += $rp.Duration.TotalSeconds
+                    }
+                }
             }
             else {
-                # look at incremental backups
+                # look at incremental and synthetic backups
                 $combi.IncrSize += $rp.BackupSize
                 $incrCount++
                 $incrDedupSum += $rp.DedupRatio
                 $incrComprSum += $rp.ComprRatio
                 $incrCRSum += $rp.ChangeRate
                 $incrCR24hSum += $rp.ChangeRate24h
+                if($null -ne $rp.Duration) {
+                    $incrDurationSum += $rp.Duration.TotalSeconds
+                }
             }
             # build blocksize statistics
             if($rp.NumOfBlocksWritten -gt 0 ) {
@@ -403,6 +428,7 @@ Process {
             $combi.FullCount = $fullCount
             $combi.AvgFullDedup = $fullDedupSum / $fullCount
             $combi.AvgFullCompr = $fullComprSum / $fullCount
+            if($fullDurationSum -gt 0 ) { $combi.AvgFullDuration = New-TimeSpan -Seconds ($fullDurationSum / $fullCount) }
             $combi.IncrCount = $incrCount
         }
         if($incrCount -gt 0) {
@@ -410,6 +436,13 @@ Process {
             $combi.AvgIncrCompr = $incrComprSum / $incrCount
             #$combi.AvgIncrChangeRate = $incrCRSum / $incrCount
             $combi.AvgIncrChangeRate24h = $incrCR24hSum / $incrCount
+            if($incrDurationSum -gt 0) {
+                $combi.AvgIncrDuration = New-TimeSpan -Seconds ($incrDurationSum / $incrCount)
+            }
+            if(($syntDurationSum -gt 0) -and ($syntCount -gt 0)) {
+                $combi.SyntCount = $syntCount
+                $combi.AvgSyntDuration = New-TimeSpan -Seconds ($syntDurationSum / $syntCount)
+            }
         }
         $combi.OldestBackupDate = $combi.RPList[0].CreationTime
         $combi.NewestBackupDate = $combi.RPList[$combi.RPList.Count -1].CreationTime
@@ -434,11 +467,15 @@ Process {
             newestBackup =  $combi.NewestBackupDate
             TotalBackupVolume = $combi.TotalSize
             nofFulls = $combi.FullCount
+            nofIncrs = $combi.IncrCount
+            nofSynts = $combi.SyntCount
+            avgFullDuration = $combi.AvgFullDuration
+            avgIncrDuration = $combi.AvgIncrDuration
+            avgSyntDuration = $combi.AvgSyntDuration
             FullBackupVolume = $combi.FullSize
             avgFullDedup = $combi.AvgFullDedup
             avgFullCompr = $combi.AvgFullCompr
             avgFullReduction = $combi.AvgFullDedup * $combi.AvgFullCompr
-            nofIncrs = $combi.IncrCount
             IncrBackupVolume = $combi.IncrSize
             avgIncrDedup = $combi.AvgIncrDedup
             avgIncrCompr = $combi.AvgIncrCompr
@@ -467,6 +504,11 @@ Process {
             # prepare 'human readable' figures for GridViews
             Write-Verbose "Preparing GridViews."
             foreach($rp in $allRPs) {
+                $gridDuration = $null
+                if($null -ne $rp.Duration) {
+                    $gridDuration = $rp.Duration.ToString("hh\:mm\:ss")
+                }
+                $rp.Duration = $gridDuration
                 $rp.ProcessedData = Format-Bytes $rp.ProcessedData
                 $rp.DataSize = Format-Bytes $rp.DataSize
                 $rp.DataRead = Format-Bytes $rp.DataRead
@@ -483,6 +525,8 @@ Process {
                 if($statItem.AvgBlocksizeWritten -gt 0) { $statItem.AvgBlocksizeWritten = Format-Bytes $statItem.AvgBlocksizeWritten }
                 if($statItem.BlockSize -gt 0) { $statItem.BlockSize = Format-Bytes $statItem.BlockSize }
                 if($null -ne $statItem.avgChangeRate24h) { $statItem.avgChangeRate24h = [math]::Round($statItem.avgChangeRate24h * 100, 2) }
+                if($null -ne $statItem.avgFullDuration) { $statItem.avgFullDuration = $statItem.avgFullDuration.ToString("hh\:mm\:ss") }
+                if($null -ne $statItem.avgIncrDuration) { $statItem.avgIncrDuration = $statItem.avgIncrDuration.ToString("hh\:mm\:ss") }
             }
 
             # output GridViews

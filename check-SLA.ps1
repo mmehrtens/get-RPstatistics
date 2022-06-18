@@ -245,7 +245,9 @@ Process {
 
                     # only proceed if we do NOT already have a restore point for this VM from this job
                     if("$($restorePoint.VmName)-$($objBackup.Name)" -notin $VMJobList){
-
+                        
+                        $rpDuration = New-TimeSpan -Start $restorePoint.CreationTimeUtc -End $restorePoint.CompletionTimeUTC
+                        
                         try {
                             $myBackupJob = $objBackup.GetJob()
                         } catch {
@@ -291,6 +293,7 @@ Process {
                             CreationTime = $restorePoint.CreationTimeUTC.ToLocalTime()
                             CompletionTime = $completionTime
                             InBackupWindow = $rpInBackupWindow
+                            Duration = $rpDuration
                             BackupType = $restorePoint.algorithm
                             ProcessedData = $restorePoint.ApproxSize
                             DataSize = $restorePoint.GetStorage().stats.DataSize
@@ -360,6 +363,7 @@ Process {
                 $rp.DataRead = Format-Bytes $rp.DataRead
                 $rp.BackupSize = Format-Bytes $rp.BackupSize
                 if($rp.Blocksize -gt 0) { $rp.BlockSize = Format-Bytes $rp.BlockSize }
+                $rp.Duration = $rp.Duration.ToString("hh\:mm\:ss")
             }
 
             # output GridViews
@@ -377,4 +381,4 @@ Process {
     Write-Output "                 SLA compliance: $SLACompliance%"
 
     Write-Verbose "Finished processing backup server $vbrServer."
-}
+} 
