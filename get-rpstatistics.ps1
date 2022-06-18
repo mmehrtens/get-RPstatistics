@@ -428,7 +428,8 @@ Process {
             $combi.FullCount = $fullCount
             $combi.AvgFullDedup = $fullDedupSum / $fullCount
             $combi.AvgFullCompr = $fullComprSum / $fullCount
-            if($fullDurationSum -gt 0 ) { $combi.AvgFullDuration = New-TimeSpan -Seconds ($fullDurationSum / $fullCount) }
+            if($fullCount -eq $syntCount) { $divisor = $fullCount } else { $divisor = $fullCount - $syntCount}
+            if($fullDurationSum -gt 0 ) { $combi.AvgFullDuration = New-TimeSpan -Seconds ($fullDurationSum / $divisor) }
             $combi.IncrCount = $incrCount
         }
         if($incrCount -gt 0) {
@@ -537,4 +538,4 @@ Process {
     }
     Write-Progress -Activity $vbrServer -Id 1 -Completed
     Write-Verbose "Finished processing backup server $vbrServer."
-} 
+}
