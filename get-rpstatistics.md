@@ -13,10 +13,11 @@ This script enumerates all existing restore points and creates two output files 
     (separated for full and incremental restore points)
 
 Mandatory parameters:
-  - `vbrServer` = Veeam backup server name or IP to connect to
+- `vbrServer` = Veeam backup server name or IP to connect to
 
 Optional parameters:
-  - `suppressGridDisplay` = switch to not show GridViews after processing
+- `suppressGridDisplay` = switch to not show GridViews after processing
+- `outputDir` = where to write the output files (folder must exist, otherwise defaulting to script folder)
 
 
 Requires [Veeam Powershell module].
