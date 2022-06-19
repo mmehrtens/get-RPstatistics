@@ -31,48 +31,50 @@
 # 
 # Two output files will be created in the output folder:
 #   1. CSV file containing most recent restore points with some details and whether they comply to backup window
-#   2. CSV file containing single line summary of SLA compliance
+#      (new file for each script run, file name prefixed with date/time)
+#   2. CSV file containing summary of SLA compliance
+#      (appending to this file for each script run)
 #
 # 2022.06.16 by M. Mehrtens
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
 Param(
-    [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]$vbrServer,
-    [Parameter(Mandatory=$false)]
-        [int]$lookBackDays=1,
-    [Parameter(Mandatory=$false)]
-        [string]$backupWindowStart="20:00",
-    [Parameter(Mandatory=$false)]
-        [string]$backupWindowEnd="07:00",
-    [Parameter(Mandatory=$false)]
-        [switch]$displayGrid=$false,
-    [Parameter(Mandatory=$false)]
-        [string]$outputDir=""
+    [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+    [string]$vbrServer,
+    [Parameter(Mandatory = $false)]
+    [int]$lookBackDays = 1,
+    [Parameter(Mandatory = $false)]
+    [string]$backupWindowStart = "20:00",
+    [Parameter(Mandatory = $false)]
+    [string]$backupWindowEnd = "07:00",
+    [Parameter(Mandatory = $false)]
+    [switch]$displayGrid = $false,
+    [Parameter(Mandatory = $false)]
+    [string]$outputDir = ""
 
 )
 # -----------------------------------------------
 
 
 Begin {
-
+    #Import-Module Veeam.Backup.PowerShell
     # calculate backup window start and stop times from parameters
     $now = Get-Date
     $intervalStart = [Datetime]("$($now.Year)" + "." + `
-                                "$($now.Month)" + "." + `
-                                "$($now.Day)" + " " + `
-                                "$backupWindowStart")
-    $intervalEnd   = [Datetime]("$($now.Year)" + "." + `
-                                "$($now.Month)" + "." + `
-                                "$($now.Day)" + " " + `
-                                "$backupWindowEnd")
+            "$($now.Month)" + "." + `
+            "$($now.Day)" + " " + `
+            "$backupWindowStart")
+    $intervalEnd = [Datetime]("$($now.Year)" + "." + `
+            "$($now.Month)" + "." + `
+            "$($now.Day)" + " " + `
+            "$backupWindowEnd")
     
     # subtract $lookBackDays from backup window start time
     $intervalStart = $intervalStart.AddDays(- $lookBackDays)
 
     # if backup window end time lies in future, use end time of yesterday
-    if($intervalEnd -gt $now) {
+    if ($intervalEnd -gt $now) {
         $intervalEnd = $intervalEnd.AddDays(-1)
     }
 
@@ -81,19 +83,19 @@ Begin {
     Write-Output "    end: $intervalEnd"
 
 
-    $jobTypesScope =  @("Backup",
-                        "EndpointBackup",
-                        "EpAgentBackup",
-                        "EpAgentManagement",
-                        "EPAgentPolicy")
+    $jobTypesScope = @("Backup",
+        "EndpointBackup",
+        "EpAgentBackup",
+        "EpAgentManagement",
+        "EPAgentPolicy")
 
-    $jobBlockSizes   = [PSCustomobject]@{ kbBlockSize256  = 256 * 1024
-                                        kbBlockSize512  = 512 * 1024
-                                        kbBlockSize1024 = 1024 * 1024
-                                        kbBlockSize4096 = 4096 * 1024
-                                        kbBlockSize8192 = 8192 * 1024
-                                        Automatic = "[Automatic]"
-                                        }
+    $jobBlockSizes = [PSCustomobject]@{ kbBlockSize256 = 256 * 1024
+        kbBlockSize512                                 = 512 * 1024
+        kbBlockSize1024                                = 1024 * 1024
+        kbBlockSize4096                                = 4096 * 1024
+        kbBlockSize8192                                = 8192 * 1024
+        Automatic                                      = "[Automatic]"
+    }
 
     # helper function to format numbers as MB/GB/TB/etc.
     Function Format-Bytes {
@@ -105,16 +107,17 @@ Begin {
             [ValidateNotNullOrEmpty()]
             [float]$number
         )
-        Begin{
-            $sizes = 'kB','MB','GB','TB','PB'
+        Begin {
+            $sizes = 'kB', 'MB', 'GB', 'TB', 'PB'
         }
         Process {
             # New for loop
-            for($x = 0; $x -lt $sizes.count; $x++){
-                if ($number -lt "1$($sizes[$x])"){
-                    if ($x -eq 0){
+            for ($x = 0; $x -lt $sizes.count; $x++) {
+                if ($number -lt "1$($sizes[$x])") {
+                    if ($x -eq 0) {
                         return "$number B"
-                    } else {
+                    }
+                    else {
                         $num = $number / "1$($sizes[$x-1])"
                         $num = "{0:N2}" -f $num
                         return "$num $($sizes[$x-1])"
@@ -123,7 +126,7 @@ Begin {
             }
 
         }
-        End{}
+        End {}
     }
 
     # function to retrieve path of repository
@@ -132,21 +135,35 @@ Begin {
         $retval = $null
         $extent = $objRP.FindChainRepositories()
 
-        if($extent) {
-            if($extent.Type -iin ('Nfs', `
-                                'CifsShare', `
-                                'SanSnapshotOnly', `
-                                'DDBoost', `
-                                'HPStoreOnceIntegration', `
-                                'AmazonS3External', `
-                                'AzureStorageExternal') ) {
+        if ($extent) {
+            if ($extent.Type -iin ('Nfs', `
+                        'CifsShare', `
+                        'SanSnapshotOnly', `
+                        'DDBoost', `
+                        'HPStoreOnceIntegration', `
+                        'AmazonS3External', `
+                        'AzureStorageExternal') ) {
                 $retval = "$($extent.FriendlyPath)"
-            } else {
+            }
+            else {
                 $retval = "$($extent.Host.Name):$($extent.FriendlyPath)"
             }
         }
         return $retval
     }
+
+    # function to format duration for grid output
+    function formatDuration($timeSpan) {
+     
+        if ($timespan.Days -gt 0) {
+            $timespan.ToString("dd\.hh\:mm\:ss")
+        }
+        else {
+            $timespan.ToString("hh\:mm\:ss")
+        }
+    
+    }
+
 }
 
 Process {
@@ -157,11 +174,13 @@ Process {
     
 
     # -----------------------------------------------
-    if($outputDir -eq "") {
+    if ($outputDir -eq "") {
         $outputDir = $PSScriptRoot
-    } elseif(-not (Test-Path -PathType Container $outputDir)) {
-            $outputDir = $PSScriptRoot
-    } else {
+    }
+    elseif (-not (Test-Path -PathType Container $outputDir)) {
+        $outputDir = $PSScriptRoot
+    }
+    else {
         $outputDir = $outputDir.TrimEnd("\")
     }
     # credential file for this server
@@ -169,22 +188,24 @@ Process {
     # output file of restore points
     $outfileRP = "$outputDir\$outfilePrefix-RPs.csv"
     #output file for statistics
-    $outfileStatistics = "$outputDir\$outfilePrefix-SLA.csv"
+    $outfileStatistics = "$outputDir\SLA-Summary.csv"
 
     Write-Progress -Activity "Connecting to $vbrServer" -Id 1
 
     # read credentials for vbr server authentication if file exists, otherwise ask for credentials and save them
     Disconnect-VBRServer -ErrorAction SilentlyContinue
     try {
-            $myCreds = Import-Clixml -path $credFile
-            Write-Verbose "Credentials read from ""$credFile."""
-    } catch {
+        $myCreds = Import-Clixml -path $credFile
+        Write-Verbose "Credentials read from ""$credFile."""
+    }
+    catch {
         Write-Verbose """$credFile"" not found, asking for credentials interactively."
         $myCreds = Get-Credential -Message "Credentials for $vbrServer"
-        if($null -ne $myCreds) {
+        if ($null -ne $myCreds) {
             $myCreds | Export-CliXml -Path $credFile | Out-Null
             Write-Verbose "Credentials written to ""$credFile."""
-        } else {
+        }
+        else {
             Write-Verbose "No Credentials, aborting."
             return
         }
@@ -194,7 +215,8 @@ Process {
     try {
         Connect-VBRServer -Server $vbrServer -Credential $myCreds
         Write-Verbose "Connection to $vbrServer successful."
-    } catch {
+    }
+    catch {
         Write-Error $Error[0]
         # we can't do anything if this connection fails
         return
@@ -204,7 +226,7 @@ Process {
 
     # get all backup jobs
     Write-Verbose "Getting all backup jobs."
-    $allBackups = Get-VBRBackup | Where-Object {$_.JobType -in $jobTypesScope}
+    $allBackups = Get-VBRBackup | Where-Object { $_.JobType -in $jobTypesScope }
     $allRPs = New-Object -TypeName 'System.Collections.Generic.List[object]'
     $VMJobList = New-Object -TypeName 'System.Collections.Generic.List[string]'
     $countJobs = 0
@@ -216,7 +238,7 @@ Process {
     Write-Progress -Activity $vbrServer -Id 1
 
     # iterate through backup jobs
-    foreach($objBackup in $allBackups) {
+    foreach ($objBackup in $allBackups) {
         Write-Verbose "Working on job: $($objBackup.JobName)"
         $countJobs++
         Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
@@ -225,86 +247,90 @@ Process {
         $objRPs = $null
         try {
             # get most recent restore point of current job
-            $objRPs = Get-VBRRestorePoint -Backup $objBackup | Sort-Object -Property @{Expression='CreationTime';Descending=$true}, VMName
-        } catch {
+            $objRPs = Get-VBRRestorePoint -Backup $objBackup | Sort-Object -Property @{Expression = 'CreationTime'; Descending = $true }, VMName
+        }
+        catch {
         }
 
         $countRPs = 0
         # iterate through all discovered restore points
-        foreach($restorePoint in $objRPs) {            
+        foreach ($restorePoint in $objRPs) {            
             Write-Progress -Activity "Getting restore points" -PercentComplete ($countRPs / $objRPs.Count * 100) -Id 3 -ParentId 2
             $myBackupJob = $null
 
             # check valid completion time, otherwise ignore this (corrupt) restore point 
             $completionTime = $restorePoint.CompletionTimeUTC
-            if($null -ne $completionTime){
+            if ($null -ne $completionTime) {
                 $completionTime = $completionTime.ToLocalTime()
             
                 # ignore restore points which are newer than the backup window end time
-                if($completionTime -le $intervalEnd) {
+                if ($completionTime -le $intervalEnd) {
 
                     # only proceed if we do NOT already have a restore point for this VM from this job
-                    if("$($restorePoint.VmName)-$($objBackup.Name)" -notin $VMJobList){
+                    if ("$($restorePoint.VmName)-$($objBackup.Name)" -notin $VMJobList) {
                         
                         $rpDuration = New-TimeSpan -Start $restorePoint.CreationTimeUtc -End $restorePoint.CompletionTimeUTC
                         
                         try {
                             $myBackupJob = $objBackup.GetJob()
-                        } catch {
+                        }
+                        catch {
                             # ignore error
                         }
-                        if($null -eq $myBackupJob ) {
+                        if ($null -eq $myBackupJob ) {
                             $myBlockSize = "[n/a]"
-                        } else {
+                        }
+                        else {
                             $myBlocksize = $jobBlockSizes."$($restorePoint.GetStorage().Blocksize)"
                         }
 
                         $myBackupType = $restorePoint.algorithm
-                        if($myBackupType -eq "Increment") {
+                        if ($myBackupType -eq "Increment") {
                             $myDataRead = $restorePoint.GetStorage().stats.DataSize
-                        } else {
+                        }
+                        else {
                             $myDataRead = $restorePoint.ApproxSize
                         }
                         $myDedup = $restorePoint.GetStorage().stats.DedupRatio
                         $myCompr = $restorePoint.GetStorage().stats.CompressRatio
-                        if($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
-                        if($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
+                        if ($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
+                        if ($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
 
                         $extentName = $null
-                        if($objThisRepo.TypeDisplay -eq "Scale-out") {
+                        if ($objThisRepo.TypeDisplay -eq "Scale-out") {
                             $extentName = $restorePoint.FindChainRepositories().Name
                         }
 
                         # check if rp is within backup window
                         $rpInBackupWindow = $false
-                        if(($completionTime -ge $intervalStart) -and ($completionTime -le $intervalEnd)) {
+                        if (($completionTime -ge $intervalStart) -and ($completionTime -le $intervalEnd)) {
                             $rpInBackupWindow = $true
                             $totalRPsInBackupWindow++
                         }
 
                         $countRPs++
                         $tmpObject = [PSCustomobject]@{
-                            RpId = ++$rpID # will be set later!
-                            VMName = $restorePoint.VmName
-                            BackupJob = $objBackup.Name
-                            Repository = $objThisRepo.Name
-                            Extent = $extentName
-                            RepoType = $restorePoint.FindChainRepositories().Type
-                            CreationTime = $restorePoint.CreationTimeUTC.ToLocalTime()
+                            RpId           = ++$rpID # will be set later!
+                            VMName         = $restorePoint.VmName
+                            BackupJob      = $objBackup.Name
+                            Repository     = $objThisRepo.Name
+                            Extent         = $extentName
+                            RepoType       = $restorePoint.FindChainRepositories().Type
+                            CreationTime   = $restorePoint.CreationTimeUTC.ToLocalTime()
                             CompletionTime = $completionTime
                             InBackupWindow = $rpInBackupWindow
-                            Duration = $rpDuration
-                            BackupType = $restorePoint.algorithm
-                            ProcessedData = $restorePoint.ApproxSize
-                            DataSize = $restorePoint.GetStorage().stats.DataSize
-                            DataRead = $myDataRead
-                            BackupSize = $restorePoint.GetStorage().stats.BackupSize
-                            DedupRatio = $myDedup
-                            ComprRatio = $myCompr
-                            Reduction = $myDedup * $myCompr
-                            Blocksize = $myBlocksize
-                            Folder = get_backupfile_path $restorePoint
-                            Filename =  $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
+                            Duration       = $rpDuration
+                            BackupType     = $restorePoint.algorithm
+                            ProcessedData  = $restorePoint.ApproxSize
+                            DataSize       = $restorePoint.GetStorage().stats.DataSize
+                            DataRead       = $myDataRead
+                            BackupSize     = $restorePoint.GetStorage().stats.BackupSize
+                            DedupRatio     = $myDedup
+                            ComprRatio     = $myCompr
+                            Reduction      = $myDedup * $myCompr
+                            Blocksize      = $myBlocksize
+                            Folder         = get_backupfile_path $restorePoint
+                            Filename       = $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
                         }
 
                         $totalRPs++
@@ -326,19 +352,20 @@ Process {
     Write-Verbose "Calculating and preparing output."
 
     # sort restore points for processing
-    $allRPs = $allRPs | Sort-Object -Property VMName, BackupJob, @{Expression='CreationTime';Descending=$true}
+    $allRPs = $allRPs | Sort-Object -Property VMName, BackupJob, @{Expression = 'CreationTime'; Descending = $true }
 
     # ...and re-number sorted list
     $rpID = 0
-    foreach($rp in $allRPs) {$rp.RpId = ++$rpID }
+    foreach ($rp in $allRPs) { $rp.RpId = ++$rpID }
 
     # create SLA output object
-    $SLACompliance = [math]::Round($totalRPsInBackupWindow/$allRPs.Count *100, 2)
+    $SLACompliance = [math]::Round($totalRPsInBackupWindow / $allRPs.Count * 100, 2)
     $SLAObject = [PSCustomobject]@{
-        BackupWindowStart = $intervalStart
-        BackupWindowEnd = $intervalEnd
-        TotalRestorePoints = $allRPs.Count
-        RPsInBackupWindow = $totalRPsInBackupWindow
+        SLACheckTime         = $now
+        BackupWindowStart    = $intervalStart
+        BackupWindowEnd      = $intervalEnd
+        TotalRestorePoints   = $allRPs.Count
+        RPsInBackupWindow    = $totalRPsInBackupWindow
         SLACompliancePercent = $SLACompliance
     }
 
@@ -346,30 +373,30 @@ Process {
     # output everything
     # -----------------
 
-    if($allRPs.Count -gt 0) {
+    if ($allRPs.Count -gt 0) {
 
         $allRPs | Export-Csv -Path $outfileRP -NoTypeInformation -Delimiter ';'
-        Write-Verbose "output file created: $outfileRP"
+        Write-Verbose "output to file: $outfileRP"
 
-        $SLAObject | Export-Csv -Path $outfileStatistics -NoTypeInformation -Delimiter ';'
-        Write-Verbose "output file created: $outfileStatistics"
+        $SLAObject | Export-Csv -Path $outfileStatistics -NoTypeInformation -Delimiter ';' -Append
+        Write-Verbose "output to file: $outfileStatistics"
 
-        if($displayGrid) {
+        if ($displayGrid) {
             # prepare 'human readable' figures for GridViews
             Write-Verbose "Preparing GridViews."
-            foreach($rp in $allRPs) {
+            foreach ($rp in $allRPs) {
                 $rp.ProcessedData = Format-Bytes $rp.ProcessedData
                 $rp.DataSize = Format-Bytes $rp.DataSize
                 $rp.DataRead = Format-Bytes $rp.DataRead
                 $rp.BackupSize = Format-Bytes $rp.BackupSize
-                if($rp.Blocksize -gt 0) { $rp.BlockSize = Format-Bytes $rp.BlockSize }
-                $rp.Duration = $rp.Duration.ToString("hh\:mm\:ss")
+                if ($rp.Blocksize -gt 0) { $rp.BlockSize = Format-Bytes $rp.BlockSize }
+                $rp.Duration = formatDuration($rp.Duration)
             }
 
             # output GridViews
             Write-Verbose "GridView display."
             $allRPs | Out-GridView -Title "List of most recent restore points" -Verbose 
-            $SLAObject | Out-GridView -Title "SLA compliance overview" -Verbose 
+            Import-Csv -Path $outfileStatistics -Delimiter ";" | Out-GridView -Title "SLA compliance overview" -Verbose 
         }
     }
     Write-Progress -Activity "Calculating and preparing output..." -Id 2 -Completed

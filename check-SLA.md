@@ -1,6 +1,6 @@
 # check-SLA.ps1
 
-This script will read all the most recent restore points from all backup jobs of a single or multiple VBR servers. SLA fulfillment ratio (in percent) is calculated based on which percentage of the restore points have been created within the given backup window in comparison to the total number of restore points.
+This script will read all the most recent restore points from all backup jobs of a single or multiple VBR servers. SLA compliance ratio (in percent) is calculated based on which percentage of the restore points have been created within the given backup window in comparison to the total number of restore points.
 
 Requires [Veeam Powershell module].
 
