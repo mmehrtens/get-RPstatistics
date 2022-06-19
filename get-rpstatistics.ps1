@@ -152,7 +152,7 @@ Process {
         $outputDir = $outputDir.TrimEnd("\")
     }
     # output files path/name prefix
-    $outfilePrefix = "$($now.ToString("yyyy-MM-ddTHH-mm-ss"))-$($vbrServer)"
+    $outfilePrefix = "$($procStartTime.ToString("yyyy-MM-ddTHH-mm-ss"))-$($vbrServer)"
 
     # -----------------------------------------------
 
@@ -214,7 +214,12 @@ Process {
         $countJobs++
         Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
 
-        $objThisRepo = $objBackup.GetRepository()
+        try {
+            $objThisRepo = $null
+            $objThisRepo = $objBackup.GetRepository()
+        }
+        catch {
+        }
         $objRPs = $null
         try {
             # get all restore points of current job
@@ -254,11 +259,15 @@ Process {
             if ($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
             if ($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
 
+            $myRepoName = $null
             $extentName = $null
-            if ($objThisRepo.TypeDisplay -eq "Scale-out") {
-                $extentName = $restorePoint.FindChainRepositories().Name
+            if ($null -ne $objThisRepo) {
+                $myRepoName = $objThisRepo.Name
+                if ($objThisRepo.TypeDisplay -eq "Scale-out") {
+                    $extentName = $restorePoint.FindChainRepositories().Name
+                }
             }
-            
+
             # check valid completion time 
             $completionTime = $restorePoint.CompletionTimeUTC
             $durationSpan = $null
@@ -276,7 +285,7 @@ Process {
                 RpId                = ++$rpID # will be set later!
                 VMName              = $restorePoint.VmName
                 BackupJob           = $objBackup.Name
-                Repository          = $objThisRepo.Name
+                Repository          = $myRepoName
                 Extent              = $extentName
                 RepoType            = $restorePoint.FindChainRepositories().Type
                 CreationTime        = $restorePoint.CreationTimeUTC.ToLocalTime()
@@ -579,5 +588,5 @@ Process {
     }
     $procDuration = formatDuration(New-TimeSpan -Start $procStartTime)
     Write-Progress -Activity $vbrServer -Id 1 -Completed
-    Write-Output "Finished processing backup server ""$vbrServer"" (processing time: $procDuration)"
+    Write-Output "Finished processing backup server ""$vbrServer"" ($($allRPs.Count) restore points, processing time: $procDuration)"
 }

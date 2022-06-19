@@ -188,7 +188,7 @@ Process {
     # credential file for this server
     $credFile = "$PSScriptRoot\$vbrServer-creds.xml"
     # output file of restore points
-    $outfileRP = "$outputDir\$outfilePrefix-RPs.csv"
+    $outfileRP = "$outputDir\$outfilePrefix-SLA-RPs.csv"
     #output file for statistics
     $outfileStatistics = "$outputDir\SLA-Summary-$vbrServer.csv"
 
@@ -245,7 +245,12 @@ Process {
         $countJobs++
         Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
 
-        $objThisRepo = $objBackup.GetRepository()
+        try {
+            $objThisRepo = $null
+            $objThisRepo = $objBackup.GetRepository()
+        }
+        catch {
+        }
         $objRPs = $null
         try {
             # get most recent restore point of current job
@@ -298,11 +303,14 @@ Process {
                         if ($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
                         if ($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
 
+                        $myRepoName = $null
                         $extentName = $null
-                        if ($objThisRepo.TypeDisplay -eq "Scale-out") {
-                            $extentName = $restorePoint.FindChainRepositories().Name
+                        if ($null -ne $objThisRepo) {
+                            $myRepoName = $objThisRepo.Name
+                            if ($objThisRepo.TypeDisplay -eq "Scale-out") {
+                                $extentName = $restorePoint.FindChainRepositories().Name
+                            }
                         }
-
                         # check if rp is within backup window
                         $rpInBackupWindow = $false
                         if (($completionTime -ge $intervalStart) -and ($completionTime -le $intervalEnd)) {
@@ -315,7 +323,7 @@ Process {
                             RpId           = ++$rpID # will be set later!
                             VMName         = $restorePoint.VmName
                             BackupJob      = $objBackup.Name
-                            Repository     = $objThisRepo.Name
+                            Repository     = $myRepoName
                             Extent         = $extentName
                             RepoType       = $restorePoint.FindChainRepositories().Type
                             CreationTime   = $restorePoint.CreationTimeUTC.ToLocalTime()
@@ -361,7 +369,10 @@ Process {
     foreach ($rp in $allRPs) { $rp.RpId = ++$rpID }
 
     # create SLA output object
-    $SLACompliance = [math]::Round($totalRPsInBackupWindow / $allRPs.Count * 100, 2)
+    $SLACompliance = 0
+    if($allRPs.Count -gt 0) {
+        $SLACompliance = [math]::Round($totalRPsInBackupWindow / $allRPs.Count * 100, 2)
+    }
     $procDuration = formatDuration(New-TimeSpan -Start $procStartTime)
     $SLAObject = [PSCustomobject]@{
         SLACheckTime         = $now
@@ -406,7 +417,7 @@ Process {
     Write-Progress -Activity $vbrServer -Id 1 -Completed
     Write-Output ""
     Write-Output "Results from VBR Server ""$vbrServer"" (processing time: $procDuration)"
-    Write-Output " Total number of restore points: $totalRPs"
+    Write-Output "     Most recent restore points: $totalRPs"
     Write-Output "Restore points in backup window: $totalRPsInBackupWindow"
     Write-Output "                 SLA compliance: $SLACompliance%"
 
