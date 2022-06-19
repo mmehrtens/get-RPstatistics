@@ -17,7 +17,6 @@ Requires [Veeam Powershell module].
 - `backupWindowEnd` = at which time of day ends the backup window? (string in 24h format, default `"07:00"` can be changed in `Param()`-section)
 - `displayGrid` = switch to display results in PS-GridViews (default = `$false`)
 - `outputDir` = where to write the output files (folder must exist, otherwise defaulting to script folder)
-- `Verbose` = write details about script steps to screen while executing (only for debugging, default = `$false`)
 
 Backup window **start** will be calculated as follows:  
 - Day  = today minus parameter `lookBackDays`
@@ -28,8 +27,10 @@ Backup window **end** will be calculated as follows:
 - Time = time of day set in parameter `backupWindowEnd`
 
 Two output files will be created in the output folder:
-1. CSV file containing most recent restore points with some details and whether they comply to backup window
-2. CSV file containing single line summary of SLA compliance
+1. CSV file containing most recent restore points with some details and whether they comply to backup window  
+   (new file for each script run, file name prefixed with date/time)
+2. CSV file containing summary of SLA compliance  
+   (appending to this file for each script run)
 
 [Back to overview](README.md)
 
