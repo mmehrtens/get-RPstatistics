@@ -3,6 +3,7 @@
 # Parameters:
 #   -vbrServer [server] = Veeam backup server name or IP to connect to
 #   -suppressGridDisplay = do not show GridViews after processing
+#   -ouputDir [folder-path] = where to create output files (folder must exist, defaulting to script folder otherwise)
 # 
 # This script enumerates all existing restore points and
 # creates 2 output files with following content 
@@ -35,7 +36,9 @@ Param(
     [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
     [string]$vbrServer,
     [Parameter(Mandatory = $false)]
-    [switch]$suppressGridDisplay = $false
+    [switch]$suppressGridDisplay = $false,
+    [Parameter(Mandatory = $false)]
+    [string]$outputDir = ""
 )
 # -----------------------------------------------
 
@@ -135,18 +138,30 @@ Begin {
 
 Process {
     $Error.Clear()
+    $procStartTime = Get-Date
+    $procDuration = ""
     Write-Verbose "Backup Server: $vbrServer"
+
+    if ($outputDir -eq "") {
+        $outputDir = $PSScriptRoot
+    }
+    elseif (-not (Test-Path -PathType Container $outputDir)) {
+        $outputDir = $PSScriptRoot
+    }
+    else {
+        $outputDir = $outputDir.TrimEnd("\")
+    }
     # output files path/name prefix
-    $outfilePrefix = "$vbrServer" + "-RestorePoints"
+    $outfilePrefix = "$($now.ToString("yyyy-MM-ddTHH-mm-ss"))-$($vbrServer)"
 
     # -----------------------------------------------
 
     # credential file for this server
     $credFile = "$PSScriptRoot\$vbrServer-creds.xml"
     # output file of restore points
-    $outfileRP = "$outfilePrefix.csv"
+    $outfileRP = "$outputDir\$outfilePrefix-RPs.csv"
     #output file for statistics
-    $outfileStatistics = "$outfilePrefix-statistics.csv"
+    $outfileStatistics = "$outputDir\$outfilePrefix-Statistics.csv"
 
     Write-Progress -Activity "Connecting to $vbrServer" -Id 1
 
@@ -521,10 +536,10 @@ Process {
 
     if ($allRPs.Count -gt 0) {
 
-        $allRPs | Export-Csv -Path "$PSScriptRoot\$outfileRP" -NoTypeInformation -Delimiter ';'
-        Write-Verbose "output file created: $PSScriptRoot\$outfileRP"
-        $outStats | Export-Csv -Path "$PSScriptRoot\$outfileStatistics" -NoTypeInformation -Delimiter ';'
-        Write-Verbose "output file created: $PSScriptRoot\$outfileStatistics"
+        $allRPs | Export-Csv -Path "$outfileRP" -NoTypeInformation -Delimiter ';'
+        Write-Verbose "output file created: $outfileRP"
+        $outStats | Export-Csv -Path "$outfileStatistics" -NoTypeInformation -Delimiter ';'
+        Write-Verbose "output file created: $outfileStatistics"
 
         if (-not $suppressGridDisplay) {
             # prepare 'human readable' figures for GridViews
@@ -558,10 +573,11 @@ Process {
 
             # output GridViews
             Write-Verbose "GridView display."
-            $allRPs | Out-GridView -Title "List of restore points" -Verbose 
-            $outStats | Out-GridView -Title "Change rate and data reduction statistics per vm and job"
+            $allRPs | Out-GridView -Title "List of restore points ($outfileRP)" -Verbose 
+            $outStats | Out-GridView -Title "Restore point statistics ($outfileStatistics)"
         }
     }
+    $procDuration = formatDuration(New-TimeSpan -Start $procStartTime)
     Write-Progress -Activity $vbrServer -Id 1 -Completed
-    Write-Verbose "Finished processing backup server $vbrServer."
+    Write-Output "Finished processing backup server ""$vbrServer"" (processing time: $procDuration)"
 }

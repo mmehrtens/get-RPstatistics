@@ -168,6 +168,8 @@ Begin {
 
 Process {
     $Error.Clear()
+    $procStartTime = Get-Date
+    $procDuration = ""
     Write-Verbose "Backup Server: $vbrServer"
     # output files path/name prefix
     $outfilePrefix = "$($now.ToString("yyyy-MM-ddTHH-mm-ss"))-$($vbrServer)"
@@ -188,7 +190,7 @@ Process {
     # output file of restore points
     $outfileRP = "$outputDir\$outfilePrefix-RPs.csv"
     #output file for statistics
-    $outfileStatistics = "$outputDir\SLA-Summary.csv"
+    $outfileStatistics = "$outputDir\SLA-Summary-$vbrServer.csv"
 
     Write-Progress -Activity "Connecting to $vbrServer" -Id 1
 
@@ -360,8 +362,10 @@ Process {
 
     # create SLA output object
     $SLACompliance = [math]::Round($totalRPsInBackupWindow / $allRPs.Count * 100, 2)
+    $procDuration = formatDuration(New-TimeSpan -Start $procStartTime)
     $SLAObject = [PSCustomobject]@{
         SLACheckTime         = $now
+        SLACheckDuration     = $procDuration
         BackupWindowStart    = $intervalStart
         BackupWindowEnd      = $intervalEnd
         TotalRestorePoints   = $allRPs.Count
@@ -372,7 +376,6 @@ Process {
 
     # output everything
     # -----------------
-
     if ($allRPs.Count -gt 0) {
 
         $allRPs | Export-Csv -Path $outfileRP -NoTypeInformation -Delimiter ';'
@@ -395,14 +398,14 @@ Process {
 
             # output GridViews
             Write-Verbose "GridView display."
-            $allRPs | Out-GridView -Title "List of most recent restore points" -Verbose 
-            Import-Csv -Path $outfileStatistics -Delimiter ";" | Out-GridView -Title "SLA compliance overview" -Verbose 
+            $allRPs | Out-GridView -Title "List of most recent restore points ($outFileRP)" -Verbose 
+            Import-Csv -Path $outfileStatistics -Delimiter ";" | Out-GridView -Title "SLA compliance overview ($outFileStatistics)" -Verbose 
         }
     }
     Write-Progress -Activity "Calculating and preparing output..." -Id 2 -Completed
     Write-Progress -Activity $vbrServer -Id 1 -Completed
     Write-Output ""
-    Write-Output "Results from VBR Server ""$vbrServer"""
+    Write-Output "Results from VBR Server ""$vbrServer"" (processing time: $procDuration)"
     Write-Output " Total number of restore points: $totalRPs"
     Write-Output "Restore points in backup window: $totalRPsInBackupWindow"
     Write-Output "                 SLA compliance: $SLACompliance%"
