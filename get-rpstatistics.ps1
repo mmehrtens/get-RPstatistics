@@ -538,6 +538,7 @@ Process {
         $outStats.Add($outObject) | Out-Null
         $outObject = $null
     }
+    Write-Progress -Activity "Calculating and preparing output..." -Id 2 -ParentId 1 -Completed
 
 
     # output everything
