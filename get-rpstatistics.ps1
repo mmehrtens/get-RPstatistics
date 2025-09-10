@@ -29,6 +29,7 @@
 #            'vbr-1', 'vbr-2' | .\get-rp-statistics -suppressGridDisplay
 # 2022.05.27 uploaded to Github
 # 2022.06.17 added CompletionTime and corrupt/consistent info
+# 2025.09.10 minor performance optimizations
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
