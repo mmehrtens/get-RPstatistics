@@ -175,7 +175,7 @@ Process {
         Write-Verbose """$credFile"" not found, asking for credentials interactively."
         $myCreds = Get-Credential -Message "Credentials for $vbrServer"
         if ($null -ne $myCreds) {
-            $myCreds | Export-CliXml -Path $credFile | Out-Null
+            $null = $myCreds | Export-CliXml -Path $credFile
             Write-Verbose "Credentials written to ""$credFile."""
         }
         else {
@@ -201,7 +201,7 @@ Process {
 
     # get all backup jobs
     Write-Verbose "Getting all backup jobs."
-    $allBackups = Get-VBRBackup | Where-Object { $_.JobType -inotin $jobTypesUnsuppd }
+    $allBackups = Get-VBRBackup
     $allRPs = New-Object -TypeName 'System.Collections.Generic.List[object]'
     $countJobs = 0
     $rpId = 0
@@ -210,121 +210,123 @@ Process {
 
     # iterate through backup jobs
     foreach ($objBackup in $allBackups) {
-        Write-Verbose "Working on job: $($objBackup.JobName)"
-        $countJobs++
-        Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
+        if(($objBackup.VMCount -gt 0) -and ($objBackup.JobType -inotin $jobTypesUnsuppd)) {
+            Write-Verbose "Working on job: $($objBackup.JobName)"
+            $countJobs++
+            Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
 
-        try {
-            $objThisRepo = $null
-            $objThisRepo = $objBackup.GetRepository()
-        }
-        catch {
-        }
-        $objRPs = $null
-        try {
-            # get all restore points of current job
-            $objRPs = Get-VBRRestorePoint -Backup $objBackup
-        }
-        catch {
-        }
-
-        $countRPs = 0
-        # iterate through all restore points
-        foreach ($restorePoint in $objRPs) {
-            Write-Progress -Activity "Getting restore points" -PercentComplete ($countRPs / $objRPs.Count * 100) -Id 3 -ParentId 2
-            
-            $myBackupJob = $null
             try {
-                $myBackupJob = $objBackup.GetJob()
+                $objThisRepo = $null
+                $objThisRepo = $objBackup.GetRepository()
             }
             catch {
-                # ignore error
             }
-            if ($null -eq $myBackupJob ) {
-                $myBlockSize = "[n/a]"
+            $objRPs = $null
+            try {
+                # get all restore points of current job
+                $objRPs = Get-VBRRestorePoint -Backup $objBackup
             }
-            else {
-                $myBlocksize = $jobBlockSizes."$($restorePoint.GetStorage().Blocksize)"
+            catch {
             }
 
-            $myBackupType = $restorePoint.algorithm
-            if ($myBackupType -eq "Increment") {
-                $myDataRead = $restorePoint.GetStorage().stats.DataSize
-            }
-            else {
-                $myDataRead = $restorePoint.ApproxSize
-            }
-            $myDedup = $restorePoint.GetStorage().stats.DedupRatio
-            $myCompr = $restorePoint.GetStorage().stats.CompressRatio
-            if ($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
-            if ($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
-
-            $myRepoName = $null
-            $extentName = $null
-            if ($null -ne $objThisRepo) {
-                $myRepoName = $objThisRepo.Name
-                if ($objThisRepo.TypeDisplay -eq "Scale-out") {
-                    $extentName = $restorePoint.FindChainRepositories().Name
+            $countRPs = 0
+            # iterate through all restore points
+            foreach ($restorePoint in $objRPs) {
+                Write-Progress -Activity "Getting restore points" -PercentComplete ($countRPs / $objRPs.Count * 100) -Id 3 -ParentId 2
+            
+                $myBackupJob = $null
+                try {
+                    $myBackupJob = $objBackup.GetJob()
                 }
-            }
-
-            # check valid completion time 
-            $completionTime = $restorePoint.CompletionTimeUTC
-            $durationSpan = $null
-            if ($null -ne $completionTime) {
-                if ($completionTime -gt $restorePoint.CreationTimeUTC) {
-                    $completionTime = $completionTime.ToLocalTime()
-                    $durationSpan = New-TimeSpan -Start $restorePoint.CreationTimeUTC -End $restorePoint.CompletionTimeUTC
+                catch {
+                    # ignore error
+                }
+                if ($null -eq $myBackupJob ) {
+                    $myBlockSize = "[n/a]"
                 }
                 else {
-                    $completionTime = $null
+                    $myBlocksize = $jobBlockSizes."$($restorePoint.GetStorage().Blocksize)"
                 }
-            }
-            $countRPs++
-            $tmpObject = [PSCustomobject]@{
-                RpId                = ++$rpID # will be set later!
-                VMName              = $restorePoint.VmName
-                BackupJob           = $objBackup.Name
-                Repository          = $myRepoName
-                Extent              = $extentName
-                RepoType            = $restorePoint.FindChainRepositories().Type
-                CreationTime        = $restorePoint.CreationTimeUTC.ToLocalTime()
-                CompletionTime      = $completionTime
-                Duration            = $durationSpan
-                IsCorrupted         = $restorePoint.IsCorrupted
-                IsConsistent        = $restorePoint.IsConsistent
-                BackupType          = $restorePoint.algorithm
-                ProcessedData       = $restorePoint.ApproxSize
-                DataSize            = $restorePoint.GetStorage().stats.DataSize
-                DataRead            = $myDataRead
-                BackupSize          = $restorePoint.GetStorage().stats.BackupSize
-                DedupRatio          = $myDedup
-                ComprRatio          = $myCompr
-                Reduction           = $myDedup * $myCompr
-                IncrInterval        = $null
-                ChangeRate          = $null
-                ChangeRate24h       = $null
-                Blocksize           = $myBlocksize
-                NumOfBlocksRead     = $null
-                NumOfBlocksWritten  = $null
-                AvgBlocksizeWritten = $null
-                Folder              = get_backupfile_path $restorePoint
-                Filename            = $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
-            }
-            # calculate blocksize statistics if dedupe ratio is reasonable (vbr provides weird numbers sometimes...)
-            if ($tmpObject.BackupSize -gt 0) {
-                if ($tmpObject.DedupRatio -le ($tmpObject.DataRead / $tmpObject.BackupSize)) {
-                    if ( ($myBlockSize -gt 0) -and ($tmpObject.BackupSize -le $tmpObject.DataRead) ) {
-                        $tmpObject.NumOfBlocksRead = $tmpObject.DataRead / $myBlockSize
-                        if ($tmpObject.NumOfBlocksRead -gt 0) {
-                            $tmpObject.NumOfBlocksWritten = [int]([math]::Round($tmpObject.NumOfBlocksRead / $tmpObject.DedupRatio))
-                            $tmpObject.AvgBlocksizeWritten = $tmpObject.BackupSize / $tmpObject.NumOfBlocksWritten
+
+                $myBackupType = $restorePoint.algorithm
+                if ($myBackupType -eq "Increment") {
+                    $myDataRead = $restorePoint.GetStorage().stats.DataSize
+                }
+                else {
+                    $myDataRead = $restorePoint.ApproxSize
+                }
+                $myDedup = $restorePoint.GetStorage().stats.DedupRatio
+                $myCompr = $restorePoint.GetStorage().stats.CompressRatio
+                if ($myDedup -gt 1) { $myDedup = 100 / $myDedup } else { $myDedup = 1 }
+                if ($myCompr -gt 1) { $myCompr = 100 / $myCompr } else { $myCompr = 1 }
+
+                $myRepoName = $null
+                $extentName = $null
+                if ($null -ne $objThisRepo) {
+                    $myRepoName = $objThisRepo.Name
+                    if ($objThisRepo.TypeDisplay -eq "Scale-out") {
+                        $extentName = $restorePoint.FindChainRepositories().Name
+                    }
+                }
+
+                # check valid completion time 
+                $completionTime = $restorePoint.CompletionTimeUTC
+                $durationSpan = $null
+                if ($null -ne $completionTime) {
+                    if ($completionTime -gt $restorePoint.CreationTimeUTC) {
+                        $completionTime = $completionTime.ToLocalTime()
+                        $durationSpan = New-TimeSpan -Start $restorePoint.CreationTimeUTC -End $restorePoint.CompletionTimeUTC
+                    }
+                    else {
+                        $completionTime = $null
+                    }
+                }
+                $countRPs++
+                $tmpObject = [PSCustomobject]@{
+                    RpId                = ++$rpID # will be set later!
+                    VMName              = $restorePoint.VmName
+                    BackupJob           = $objBackup.Name
+                    Repository          = $myRepoName
+                    Extent              = $extentName
+                    RepoType            = $restorePoint.FindChainRepositories().Type
+                    CreationTime        = $restorePoint.CreationTimeUTC.ToLocalTime()
+                    CompletionTime      = $completionTime
+                    Duration            = $durationSpan
+                    IsCorrupted         = $restorePoint.IsCorrupted
+                    IsConsistent        = $restorePoint.IsConsistent
+                    BackupType          = $restorePoint.algorithm
+                    ProcessedData       = $restorePoint.ApproxSize
+                    DataSize            = $restorePoint.GetStorage().stats.DataSize
+                    DataRead            = $myDataRead
+                    BackupSize          = $restorePoint.GetStorage().stats.BackupSize
+                    DedupRatio          = $myDedup
+                    ComprRatio          = $myCompr
+                    Reduction           = $myDedup * $myCompr
+                    IncrInterval        = $null
+                    ChangeRate          = $null
+                    ChangeRate24h       = $null
+                    Blocksize           = $myBlocksize
+                    NumOfBlocksRead     = $null
+                    NumOfBlocksWritten  = $null
+                    AvgBlocksizeWritten = $null
+                    Folder              = get_backupfile_path $restorePoint
+                    Filename            = $restorePoint.GetStorage().PartialPath.Internal.Elements[0]
+                }
+                # calculate blocksize statistics if dedupe ratio is reasonable (vbr provides weird numbers sometimes...)
+                if ($tmpObject.BackupSize -gt 0) {
+                    if ($tmpObject.DedupRatio -le ($tmpObject.DataRead / $tmpObject.BackupSize)) {
+                        if ( ($myBlockSize -gt 0) -and ($tmpObject.BackupSize -le $tmpObject.DataRead) ) {
+                            $tmpObject.NumOfBlocksRead = $tmpObject.DataRead / $myBlockSize
+                            if ($tmpObject.NumOfBlocksRead -gt 0) {
+                                $tmpObject.NumOfBlocksWritten = [int]([math]::Round($tmpObject.NumOfBlocksRead / $tmpObject.DedupRatio))
+                                $tmpObject.AvgBlocksizeWritten = $tmpObject.BackupSize / $tmpObject.NumOfBlocksWritten
+                            }
                         }
                     }
                 }
+                $null = $allRPs.Add($tmpObject)
+                $tmpObject = $null
             }
-            $allRPs.Add($tmpObject) | Out-Null
-            $tmpObject = $null
         }
     }
     Write-Verbose "Disconnecting from backup server $vbrServer."
@@ -388,10 +390,10 @@ Process {
             # add all restore points of this vm/job combination to this object
             $rpSelection = $allRPs | Where-Object { ($_.VMName -eq $rp.VMName) -and ($_.BackupJob -eq $rp.BackupJob) -and ($_.Repository -eq $rp.Repository) } | Sort-Object -Property RpId
             foreach ($selectedRp in $rpSelection) {
-                $combiObject.RPList.Add($selectedRP) | Out-Null
+                $null = $combiObject.RPList.Add($selectedRP)
             }
             # add the object to the mater list
-            $masterList.Add($combiObject) | Out-Null
+            $null = $masterList.Add($combiObject)
             $combiObject = $null
         }
     }
@@ -535,10 +537,9 @@ Process {
             Blocksize           = $combi.Blocksize
             AvgBlocksizeWritten = $combi.AvgBlocksizeWritten
         }
-        $outStats.Add($outObject) | Out-Null
+        $null = $outStats.Add($outObject)
         $outObject = $null
     }
-    Write-Progress -Activity "Calculating and preparing output..." -Id 2 -ParentId 1 -Completed
 
 
     # output everything
