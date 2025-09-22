@@ -30,12 +30,15 @@
 # 2022.05.27 uploaded to Github
 # 2022.06.17 added CompletionTime and corrupt/consistent info
 # 2025.09.10 minor performance optimizations
+# 2025.09.22 added capability to filter on job-names defined in parameter "JobFilterFile" (textfile, one job-name per line)
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
 Param(
     [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
     [string]$vbrServer,
+    [Parameter(Mandatory = $false)]
+    [string]$JobFilterFile = "",
     [Parameter(Mandatory = $false)]
     [switch]$suppressGridDisplay = $false,
     [Parameter(Mandatory = $false)]
@@ -45,16 +48,6 @@ Param(
 
 
 Begin {
-    #Add-PSSnapin VeeamPSSnapin -ErrorAction SilentlyContinue
-    #Import-Module Veeam.Backup.PowerShell
-
-    #$jobTypesStandard = @("Backup",
-    #                      "BackupSync",
-    #                      "SimpleBackupCopyPolicy",
-    #                      "SimpleBackupCopyWorker")
-    #$jobTypeAgents   =  @("EndpointBackup",
-    #                      "EpAgentBackup",
-    #                      "EpAgentManagement")
     $jobTypesUnsuppd = @("OracleRMANBackup",
         "SapHanaBackintBackup",
         "SqlLogBackup",
@@ -155,6 +148,23 @@ Process {
     # output files path/name prefix
     $outfilePrefix = "$($procStartTime.ToString("yyyy-MM-ddTHH-mm-ss"))-$($vbrServer)"
 
+    # read optional JobFilterFile
+    $includeJobsList = @()
+    if ("" -ne $JobFilterFile) {
+        try {
+            $JobFilterFile = (Get-Item -Path $JobFilterFile -ErrorAction Stop).FullName
+            Write-Verbose "reading job-filter file ""$JobFilterFile"""
+            $includeJobsList = Get-Content -LiteralPath $JobFilterFile -ErrorAction Stop
+            Write-Output "filtering on $($includeJobsList.Count) Jobs listed in ""$JobFilterFile"""
+        }
+        catch {
+            Write-Output "!!! error reading from ""$JobFilterFile"" !!!"
+        }
+    } else {
+        $includeJobsList = $null
+    }
+
+
     # -----------------------------------------------
 
     # credential file for this server
@@ -211,7 +221,7 @@ Process {
 
     # iterate through backup jobs
     foreach ($objBackup in $allBackups) {
-        if(($objBackup.VMCount -gt 0) -and ($objBackup.JobType -inotin $jobTypesUnsuppd)) {
+        if(($objBackup.VMCount -gt 0) -and ($objBackup.JobType -inotin $jobTypesUnsuppd) -and ( ($null -eq $includeJobsList) -or ($objBackup.Name -in $includeJobsList) ) ) {
             Write-Verbose "Working on job: $($objBackup.JobName)"
             $countJobs++
             Write-Progress -Activity "Iterating through backup jobs" -CurrentOperation "$($objBackup.JobName)" -PercentComplete ($countJobs / $allBackups.Count * 100) -Id 2 -ParentId 1
