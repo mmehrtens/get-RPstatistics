@@ -16,6 +16,7 @@ Mandatory parameters:
 - `vbrServer` = Veeam backup server name or IP to connect to
 
 Optional parameters:
+- `JobFilterFile` = text file with job-names to look at (one per line), jobs not in this file will be ignored
 - `suppressGridDisplay` = switch to not show GridViews after processing
 - `outputDir` = where to write the output files (folder must exist, otherwise defaulting to script folder)
 
