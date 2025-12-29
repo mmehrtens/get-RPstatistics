@@ -18,7 +18,7 @@ Requires [Veeam Powershell module].
 - `backupWindowEnd` = at which time of day ends the backup window? (string in 24h format, default `"07:00"` can be changed in `Param()`-section)
 - `displayGrid` = switch to display results in PS-GridViews (default = `$false`)
 - `outputDir` = where to write the output files (folder must exist, otherwise defaulting to script folder)
-- `excludeJobs` = jobs including this string in their **description** field will be ignored (case-insensitive, default = empty string, i.e. no exclusions)
+- `excludeJobs` = jobs including this string in their **description** field (_**not** in the job name!_) will be ignored (case-insensitive, default = empty string, i.e. no exclusions)
 - `excludeVMs` = VMs (or computers) that have this string as part of their name will be ignored (case-insensitive,default = empty string, i.e. no exclusions)
 
 
