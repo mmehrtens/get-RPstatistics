@@ -70,7 +70,7 @@ Param(
     [string]$excludeVMsFile = "exclude-VMs.txt",
     [string]$separatorChar = ',',
     [Parameter(Mandatory = $false)]
-    [string]$excludeJobs = "",
+    [string]$excludeJobs = "temp",
     [Parameter(Mandatory = $false)]
     [string]$excludeJobsFile = "exclude-Jobs.txt"
 )
@@ -130,12 +130,12 @@ Begin {
 
     # build proper wildcards for exclusion filters
     if ("" -ne $excludeJobs) {
-        $excludeJobs = "*$($excludeJobs.Trim('*'))*" 
-        Write-Output "excluding jobs matching ""$excludeJobs"" 
+        $excludeJobs = "*{0}*" -f $excludeJobs.Trim('*')
+        Write-Output "excluding jobs matching ""$excludeJobs"""
     }
     if ("" -ne $excludeVMs) {
-        $excludeVMs = "*$($excludeVMs.Trim('*'))*" 
-        Write-Output "excluding VMs matching  ""$excludeVMs"" 
+        $excludeVMs = "*{0}*" -f $excludeVMs.Trim('*')
+        Write-Output "excluding VMs matching ""$excludeVMs"""
     }
 
     # read exclusion list files
