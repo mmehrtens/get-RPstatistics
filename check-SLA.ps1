@@ -48,6 +48,7 @@
 # 2024.01.22 replaced usage of obsolete method 'GetTargetVmInfo()' with property 'AuxData' to determine vSphere VM-IDs (this might NOT work with VBR versions prior to 12.1)
 # 2025.12.29 fixed a bug related to exclusion processing of VM-IDs ("MoRef-IDs") in the excludeVMsFile
 # 2025.12.29 optimized restore point processing (cache expensive calls, hashtable lookups for exclusions, on-the-fly dedupe)
+# 2026.08.07 fixed a console output bug that falsely indicated that processing started although it didn't
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
@@ -300,19 +301,19 @@ Process {
     #output file for statistics
     $outfileStatistics = "$outputDir\SLA-Summary-$vbrServer.csv"
 
-    Write-Progress -Activity "Connecting to $vbrServer" -Id 1
-
     # read credentials for vbr server authentication if file exists, otherwise ask for credentials and save them
     Disconnect-VBRServer -ErrorAction SilentlyContinue
+    $myCreds = $null
     try {
         $myCreds = Import-Clixml -path $credFile
         Write-Verbose "Credentials read from ""$credFile."""
     }
     catch {
         Write-Verbose """$credFile"" not found, asking for credentials interactively."
-        $myCreds = Get-Credential -Message "Credentials for $vbrServer"
-        if ($null -ne $myCreds) {
-            $null = $myCreds | Export-CliXml -Path $credFile
+        $myCreds = $null
+        $myCreds = Get-Credential -Title "Authentication" -Message "Please enter credentials for $vbrServer" -Debug
+        if ($myCreds) {
+            $myCreds | Export-CliXml -Path $credFile
             Write-Verbose "Credentials written to ""$credFile."""
         }
         else {
@@ -322,6 +323,7 @@ Process {
     }
 
     # establish connection to vbr server
+    Write-Progress -Activity "Connecting to $vbrServer" -Id 1
     try {
         Connect-VBRServer -Server $vbrServer -Credential $myCreds
         Write-Verbose "Connection to $vbrServer successful."
