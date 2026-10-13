@@ -49,6 +49,8 @@
 # 2025.12.29 fixed a bug related to exclusion processing of VM-IDs ("MoRef-IDs") in the excludeVMsFile
 # 2025.12.29 optimized restore point processing (cache expensive calls, hashtable lookups for exclusions, on-the-fly dedupe)
 # 2026.08.07 fixed a console output bug that falsely indicated that processing started although it didn't
+# 2026.10.13 added support for running on Linux (tested on Rocky 9.8)
+#            Veeam Powershell Module required, see https://helpcenter.veeam.com/docs/vbr/powershell/running_ps_sessions_linux.html#configuring-veeam-backup-powershell-on-linux-machines
 # -----------------------------------------------
 
 # vbrServer passed as parameter (script will ask for credentials if there is no credentials file!)
@@ -80,7 +82,25 @@ Param(
 
 Begin {
 
-    #Import-Module Veeam.Backup.PowerShell
+    # check for Linux/Windows platform
+    if($PSVersionTable.Platform -eq "Unix") {
+        try {
+            Import-Module "/opt/veeam/powershell/Veeam.Backup.PowerShell/Veeam.Backup.PowerShell.psd1" -ErrorAction Stop
+        } catch {
+            write-output "ERROR: Veeam Powershell Module not found."
+            break
+        }
+        if($displayGrid) {
+            write-output "(ignoring '-displayGrid' parameter as this is not suported on Linux)"
+            $displayGrid = $false
+        }
+    } elseif($PSVersionTable.Platform -eq "Win32NT") {
+        #Import-Module Veeam.Backup.PowerShell
+    } else {
+        write-output "ERROR: This script only runs on Powershell Core on Windows or Linux."
+        break
+    }
+    
     # calculate backup window start and stop times from parameters
     $now = Get-Date
     $intervalStart = [Datetime]("$($now.Year)" + "." + `
